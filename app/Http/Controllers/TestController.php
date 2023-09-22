@@ -33,7 +33,7 @@ class TestController extends Controller
             // Identifiant client
             'client_id'         => $client->id,
             // Secret client
-            'client_secret'     => $client->client_secret,
+            'client_secret'     => 'ElmVrpbVtpsECW2wCK6SowK84SYa',
             // Numéro du marchand
             'merchant_number'   => '0343500003',
             // Activer le mode production (true)
