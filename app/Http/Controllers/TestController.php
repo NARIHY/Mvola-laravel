@@ -21,82 +21,103 @@ class TestController extends Controller
         return view('index');
     }
 
-    //il y a encore une erreur
-    public function buy(TestRequest $request): RedirectResponse
-{
-    try {
-        // Récupérer le client numéro 1
-        $client = Clien::findOrFail(1);
 
-        // Instantiation de MVola
-        $credentials = array(
-            // Identifiant client
-            'client_id'         => $client->id,
-            // Secret client
-            'client_secret'     => 'ElmVrpbVtpsECW2wCK6SowK84SYa',
-            // Numéro du marchand
-            'merchant_number'   => '0343500003',
-            // Activer le mode production (true)
-            'production'        => true,
-            // Nom de la société
-            'partner_name'      => "fusiongift",
-            // Langue (par exemple 'MG' pour le malgache)
-            'lang'              => 'MG'
-        );
+     /**
+     * Just change these when you are in a go Live //production
+     * Payements with mobile money in scandbox
+     * No interfaces but you can add view for it
+     * Post request Api
+     * @param TestRequest $request
+     * @return RedirectResponse
+     */
+    public function buy(TestRequest $request)
+    {
+        //get amount
+        $amount = $request->validated();
+        //important function that generates X-Coretionnal-id
+        function generateRandomCorrelationId() {
+            // You can customize your correlation ID generation here
+            return 'CORR-' . uniqid();
+        }
+        //verry important
 
-        // Répertoire pour le cache
-        $cache = __DIR__.'/cache';
+        //
 
-        // Instanciation de MVola
-        $mvola = new MVola($credentials, $cache);
+            //insert here your params
 
-        // Détails de paiement
-        $payDetails = new PayIn();
+        //
+        // Replace the following information with your real access and application data
+        $customerKey = 'your customer key';
+        $customerSecret = 'your customer secret';
+        $accessToken =  'your access token';
+        // API URL
+        //https://devapi.mvola.mg/mvola/mm/transactions/type/merchantpay/1.0.0/
+        // scandbox api
+        $credentials = base64_encode($customerKey . ':' . $customerSecret);
+        $correlationId = 'X-CorrelationId: ' . generateRandomCorrelationId();
+        //$url = 'https://devapi.mvola.mg/token';
+        $apiUrl = 'https://devapi.mvola.mg/$accessToken'; // Replace with the actual token endpoint
+        // You can customize the reference format
+        $originalTransactionReference = 'TX' . uniqid();
+        // Data you want to send in the POST request (in JSON format for example)
+        $postData = json_encode([
+            'amount' => $amount, // Replace with the transaction amount
+            'currency' => 'Ar', // Replace with currency code
+            'descriptionText' => 'description', // Replace with description
+            'requestDate' => '2023-10-13T12:00:00.000Z', // Replace with transaction date
+            'debitParty' => '0343500003', // Replace with the customer's phone number
+            'creditParty' => '0343500004', // Replace with the merchant's phone number
+            'metadata' => [
+                'partnerName' => 'You partner name', // Replace with partner name
+                'requestingOrganisation' => 'Transaction Reference', // Replace with the transaction reference
+                'originalTransactionReference' => $originalTransactionReference, // Random transaction references
+                'fc' => 'USD', // Replace with foreign currency
+                'amountFc' => 100.50, // Replace with amount based on foreign currency
+            ]
+        ]);
+        //Initialisation of curl
+        $curl = curl_init($apiUrl);
+        // Configuring cURL options
+        $headers = [
+            'Authorization: Bearer ' . $accessToken, // Use the token in the Bearer header
+            //correlationId, instanciation in the amount variable
+            $correlationId,
+            //languages Fr or Mg
+            'UserLanguage: MG',
+            //Types
+            'Content-Type: application/json', // Specify the content type in JSON
+            //callback url if success | change if you need to change it
+            'X-Callback-URL: http://example.com/',
+            //appliaction cache
+            'Cache-Control: no-cache'
+        ];
+        // Set cURL to return the response as a string instead of directly outputting it.
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        // Configure cURL to perform a POST request.
+        curl_setopt($curl, CURLOPT_POST, 1);
+        // Set the data to be sent in the POST request. The data is stored in the $postData variable.
+        curl_setopt($curl, CURLOPT_POSTFIELDS, $postData);
+        // Set the HTTP headers for the request, which are defined in the $headers array.
+        curl_setopt($curl, CURLOPT_HTTPHEADER, $headers);
+        // curl response
+        $response = curl_exec($curl);
+        //If no response
+        if ($response === false) {
+            die('Erreur cURL : ' . curl_error($curl));
+        }
 
-        // Montant (1000 ar ou ariary)
-        $money = new Money('MGA', $request->validated());
-        $payDetails->amount = $money;
+        $httpCode = curl_getinfo($curl, CURLINFO_HTTP_CODE);
 
-
-        // Utilisateur pour récupérer le montant
-        $debit = new KeyValue();
-        $debit->addPairObject(new Phone("0343500004"));
-        $payDetails->debitParty = $debit;
-
-
-        // Description du paiement
-        $payDetails->descriptionText = "Test paiement";
-
-        $meta = new KeyValue();
-        $meta->add('partnerName', "fusiongift");
-
-        // Informations métadonnées
-        $payDetails->metadata = $meta;
-
-        // Définir l'URL de rappel
-        $mvola->setCallbackUrl("https://example.com/mycallback");
-        $convertion = implode(',', $mvola->payIn($payDetails));
-        // Effectuer un paiement
-        $response = $convertion;
-        dd($response);
-
-        // Convertir la réponse en JSON
-        $responseJson = json_encode($response);
-
-        // Afficher la réponse en tant que chaîne de caractères
-        dd($responseJson);
-
-        // Si nécessaire, décoder la réponse en tant que tableau PHP
-        // $responseArray = json_decode($responseJson, true);
-        // dd($responseArray);
-
-        return redirect()->route('index');
-    } catch (Exception $e) {
-        // Gérer l'exception ici
-        // Vous pouvez afficher l'erreur ou la journaliser
-        // Exemple : Log::error($e->getMessage());
-        return redirect()->route('index')->with('error', 'Une erreur est survenue lors du paiement.');
+        curl_close($curl);
+        //If it's finished then redirect to a callBack url || it doesn't work in the scandbox
+        //but if you need to verify these if success or not get the response code
+        // Check if the HTTP request was successful (usually 200 OK)
+        if ($httpCode === 200) {
+            return redirect()->route('index',)->with('success', 'Payement successful');
+        } else {
+            //if error
+            return redirect()->route('index')->with('error', 'Failure');
+        }
     }
-}
 
 }
