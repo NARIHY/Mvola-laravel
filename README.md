@@ -4,3 +4,8 @@
 
 go to the testcontroller and replace these to your access
 and customize your api post integration
+
+## Installation
+1) go and type the following command in your terminal:
+- composer install
+- php artisan serve
